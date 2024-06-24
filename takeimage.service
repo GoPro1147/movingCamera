@@ -1,0 +1,15 @@
+[Unit]
+Description=FastAPI Service
+After=network.target
+
+[Service]
+User=pi
+WorkingDirectory=/home/pi/ki_rpi/
+ExecStart=/usr/bin/python3 -m uvicorn app:app --host 0.0.0.0 --port 8000
+Restart=always
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=fastapi
+
+[Install]
+WantedBy=multi-user.target
