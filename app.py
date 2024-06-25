@@ -52,27 +52,27 @@ def communicate_with_serial(command, response_count=1):
 
 app = FastAPI()
 # RTSP 스트림 URL
-rtsp_url = "rtsp://username:password@camera_ip:port/path"
+# rtsp_url = "rtsp://username:password@camera_ip:port/path"
 
-def generate_frames():
-    cap = cv2.VideoCapture(rtsp_url)
-    while True:
-        success, frame = cap.read()
-        if not success:
-            break
-        else:
-            ret, buffer = cv2.imencode('.jpg', frame)
-            frame = buffer.tobytes()
-            yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+# def generate_frames():
+#     cap = cv2.VideoCapture(rtsp_url)
+#     while True:
+#         success, frame = cap.read()
+#         if not success:
+#             break
+#         else:
+#             ret, buffer = cv2.imencode('.jpg', frame)
+#             frame = buffer.tobytes()
+#             yield (b'--frame\r\n'
+#                    b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
             
 def makeFileName():
     timestr = time.strftime("%Y%m%d-%H_%M_%S")
     return f"./output/{timestr}.png"
 
-@app.get('/video_feed')
-async def video_feed():
-    return StreamingResponse(generate_frames(), media_type='multipart/x-mixed-replace; boundary=frame')
+# @app.get('/video_feed')
+# async def video_feed():
+#     return StreamingResponse(generate_frames(), media_type='multipart/x-mixed-replace; boundary=frame')
 
 @app.get("/status")
 async def get_status():
