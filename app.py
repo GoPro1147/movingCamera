@@ -1,19 +1,15 @@
-from flask import Flask, Response, jsonify, make_response
+from fastapi import FastAPI, Response, status
+from fastapi.responses import JSONResponse
 import serial
 import json
 import cv2
 import time
 from camera import IdsCamera
 import os
-
-
-
-
-
-def on_image(image):
-    print(f"Image Shape : {image.shape}")
-    cv2.imwrite('test.png', image)
-
+from starlette.responses import StreamingResponse
+folder_path = './output'
+if not os.path.exists(folder_path):
+    os.makedirs(folder_path)
 
 def send_json_data(ser, data):
     try:
@@ -45,16 +41,16 @@ def communicate_with_serial(command, response_count=1):
             send_json_data(ser, command)
             responses = receive_multiple_responses(ser, response_count)
         if responses:
-            return make_response(jsonify(responses), 200)
+            return JSONResponse(content=responses, status_code=status.HTTP_200_OK)
         else:
-            return make_response("No response from UART device", 500)
+            return JSONResponse(content="No response from UART device", status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
     except serial.SerialException as e:
-        return make_response(f"Serial communication error: {e}", 500)
+        return JSONResponse(content=f"Serial communication error: {e}", status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
     except Exception as e:
-        return make_response(f"An error occurred: {e}", 500)
+        return JSONResponse(content=f"An error occurred: {e}", status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-app = Flask(__name__)
+app = FastAPI()
 # RTSP 스트림 URL
 rtsp_url = "rtsp://username:password@camera_ip:port/path"
 
@@ -74,49 +70,46 @@ def makeFileName():
     timestr = time.strftime("%Y%m%d-%H_%M_%S")
     return f"./output/{timestr}.png"
 
-@app.route('/video_feed')
-def video_feed():
-    return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+@app.get('/video_feed')
+async def video_feed():
+    return StreamingResponse(generate_frames(), media_type='multipart/x-mixed-replace; boundary=frame')
 
-@app.route("/status", methods=["GET"])
-def get_status():
+@app.get("/status")
+async def get_status():
     return communicate_with_serial({"cmd": "status"})
 
-@app.route("/location", methods=["GET"])
-def get_camera_location():
+@app.get("/location")
+async def get_camera_location():
     return communicate_with_serial({"cmd": "get_x"})
 
-@app.route("/stop", methods=["GET"])
-def stop_moving_camera():
+@app.get("/stop")
+async def stop_moving_camera():
     return communicate_with_serial({"cmd": "halt"})
 
-@app.route("/go/<x>", methods=["GET"])
-def go_moving_camera(x):
+@app.get("/go/{x}")
+async def go_moving_camera(x: str):
     return communicate_with_serial({"cmd": "go_x", "x": x}, 2)
 
-@app.route("/calibrate", methods=["GET"])
-def calibrate():
+@app.get("/calibrate")
+async def calibrate():
     return communicate_with_serial({"cmd": "calibrate"})
 
-@app.route("/setmaximum/manual/<x_max>", methods=["GET"])
-def set_maximum_manual(x_max):
+@app.get("/setmaximum/manual/{x_max}")
+async def set_maximum_manual(x_max: str):
     return communicate_with_serial({"cmd": "calibrate", "set_type": "manual", "x_max": x_max})
 
-@app.route("/setmaximum/auto", methods=["GET"])
-def set_maximum_manual():
+@app.get("/setmaximum/auto")
+async def set_maximum_auto():
     return communicate_with_serial({"cmd": "calibrate", "set_type": "limit_sw"})
 
 
-@app.route("/get_image", methods=["GET"])
-def get_image():
+@app.get("/get_image")
+async def get_image():
     image_path = makeFileName()
     camera = IdsCamera()
-    camera.set_image_handler(lambda image: cv2.imwrite('test.png', image))
+    camera.set_image_handler(lambda image: cv2.imwrite(image_path, image))
 
 
 
 if __name__ == "__main__":
-    folder_path = './output'
-    if not os.path.exists(folder_path):
-        os.makedirs(folder_path)
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    
