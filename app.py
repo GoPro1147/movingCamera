@@ -108,8 +108,3 @@ async def get_image():
     image_path = makeFileName()
     camera = IdsCamera()
     camera.set_image_handler(lambda image: cv2.imwrite(image_path, image))
-
-
-
-if __name__ == "__main__":
-    
