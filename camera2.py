@@ -61,7 +61,7 @@ def imageAquisition(datastream, filename):
 
 def makeFileName():
     timestr = time.strftime("%Y%m%d-%H_%M_%S")
-    return f"./output/{timestr}.png"
+    return f"./output/{timestr}.jpeg"
 
 def takePicture():
     ids_peak.Library.Initialize()
