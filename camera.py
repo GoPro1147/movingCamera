@@ -60,7 +60,6 @@ class IdsCamera(object):
             return
         elif self.__busy:
             logger.error("Camera is busy")
-            print("busy")
             return
         self.__busy = True
         self.node_map_remote_device.FindNode("TriggerSoftware").Execute()

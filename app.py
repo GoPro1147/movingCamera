@@ -98,8 +98,10 @@ async def get_image(background_tasks: BackgroundTasks):
     camera.set_image_handler(image_handler)
     camera.single_shot()
 
+    # 카메라가 이미지 캡처를 완료할 때까지 대기
     await image_captured_event.wait()
 
+    # 이미지 캡처가 완료된 후 응답 생성
     response = FileResponse(image_path)
 
     # 파일 삭제를 백그라운드 태스크로 등록
