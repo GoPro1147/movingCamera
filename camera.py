@@ -146,7 +146,7 @@ if __name__ == "__main__":
             camera.single_shot()
 
             time.sleep(2)
-
+            print(camera.busy())
             # for sync 
             while camera.busy():
                 print(camera.busy())
