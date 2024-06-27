@@ -111,6 +111,7 @@ class IdsCamera(object):
                 try:
                     _buffer = self.datastream.WaitForFinishedBuffer(500)
                 except ids_peak.TimeoutException as e:
+                    print(e)
                     continue
                 ipl_image = ids_peak_ipl_extension.BufferToImage(_buffer)
                 self.datastream.QueueBuffer(_buffer)
