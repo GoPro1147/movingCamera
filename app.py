@@ -36,7 +36,7 @@ def receive_multiple_responses(ser, response_count=1):
 
 def communicate_with_serial(command, response_count=1):
     try:
-        with serial.Serial("/dev/ttyUSB0", 115200, timeout=1) as ser:
+        with serial.Serial("/dev/ttyAMA0", 115200, timeout=1) as ser:
             send_json_data(ser, command)
             responses = receive_multiple_responses(ser, response_count)
         if responses:
