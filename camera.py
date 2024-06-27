@@ -122,7 +122,9 @@ class IdsCamera(object):
             logger.error(f"Error in U3 image acquisition: {e}")
             print(e)
 
-        ids_peak.Library.Close()
+        finally:
+            ids_peak.Library.Close()
+            return None
 
     def stop(self): 
         self.__keep_running = False
