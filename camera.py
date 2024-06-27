@@ -149,6 +149,7 @@ if __name__ == "__main__":
 
             # for sync 
             while camera.busy():
+                print(camera.busy())
                 pass
 
             
