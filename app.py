@@ -1,27 +1,26 @@
-from fastapi import FastAPI, Response, status
-from fastapi.responses import JSONResponse
-import serial
-import json
-import cv2
-import time
+from fastapi import FastAPI,  status,  BackgroundTasks
+from fastapi.responses import JSONResponse, FileResponse
+import cv2, serial
+import asyncio, json, time, os
 from camera import IdsCamera
-import os
-from starlette.responses import StreamingResponse
+
+
 folder_path = './output'
 if not os.path.exists(folder_path):
     os.makedirs(folder_path)
+
+def delete_file(file_path: str):
+    if os.path.exists(file_path):  # 파일이 존재하는지 확인
+        os.remove(file_path)  # 파일 삭제
 
 def send_json_data(ser, data):
     try:
         # 데이터 전송
         ser.write(json.dumps(data).encode('utf-8') + b'\n')
-        # 응답 수신
-        response = ser.readline().decode('utf-8')
-        return json.loads(response)
     except Exception as e:
         print(f"Error communicating with serial device: {e}")
+    finally:
         return None
-
 
 def receive_multiple_responses(ser, response_count=1):
     responses = []
@@ -51,28 +50,10 @@ def communicate_with_serial(command, response_count=1):
 
 
 app = FastAPI()
-# RTSP 스트림 URL
-# rtsp_url = "rtsp://username:password@camera_ip:port/path"
-
-# def generate_frames():
-#     cap = cv2.VideoCapture(rtsp_url)
-#     while True:
-#         success, frame = cap.read()
-#         if not success:
-#             break
-#         else:
-#             ret, buffer = cv2.imencode('.jpg', frame)
-#             frame = buffer.tobytes()
-#             yield (b'--frame\r\n'
-#                    b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
             
 def makeFileName():
     timestr = time.strftime("%Y%m%d-%H_%M_%S")
-    return f"./output/{timestr}.png"
-
-# @app.get('/video_feed')
-# async def video_feed():
-#     return StreamingResponse(generate_frames(), media_type='multipart/x-mixed-replace; boundary=frame')
+    return f"./output/{timestr}.jpeg"
 
 @app.get("/status")
 async def get_status():
@@ -104,7 +85,24 @@ async def set_maximum_auto():
 
 
 @app.get("/get_image")
-async def get_image():
+async def get_image(background_tasks: BackgroundTasks):
     image_path = makeFileName()
     camera = IdsCamera()
-    camera.set_image_handler(lambda image: cv2.imwrite(image_path, image))
+
+    image_captured_event = asyncio.Event()
+
+    def image_handler(image):
+        cv2.imwrite(image_path, image)
+        image_captured_event.set()
+
+    camera.set_image_handler(image_handler)
+    camera.single_shot()
+
+    await image_captured_event.wait()
+
+    response = FileResponse(image_path)
+
+    # 파일 삭제를 백그라운드 태스크로 등록
+    background_tasks.add_task(delete_file, image_path)
+
+    return response

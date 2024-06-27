@@ -132,7 +132,7 @@ class IdsCamera(object):
 
 def on_image(image):
     print(f"Image Shape : {image.shape}")
-    cv2.imwrite('test.png', image)
+    cv2.imwrite('test.jpg', image)
 
 
 if __name__ == "__main__":
