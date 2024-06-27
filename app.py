@@ -2,7 +2,7 @@ from fastapi import FastAPI,  status,  BackgroundTasks
 from fastapi.responses import JSONResponse, FileResponse
 import cv2, serial
 import asyncio, json, time, os
-from camera import IdsCamera
+from camera2 import takePicture
 
 
 folder_path = './output'
@@ -86,20 +86,7 @@ async def set_maximum_auto():
 
 @app.get("/get_image")
 async def get_image(background_tasks: BackgroundTasks):
-    image_path = makeFileName()
-    camera = IdsCamera()
-
-    image_captured_event = asyncio.Event()
-
-    def image_handler(image):
-        cv2.imwrite(image_path, image)
-        image_captured_event.set()
-
-    camera.set_image_handler(image_handler)
-    camera.single_shot()
-
-    # 카메라가 이미지 캡처를 완료할 때까지 대기
-    await image_captured_event.wait()
+    image_path = takePicture()
 
     # 이미지 캡처가 완료된 후 응답 생성
     response = FileResponse(image_path)
