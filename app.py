@@ -1,8 +1,10 @@
 from fastapi import FastAPI,  status,  BackgroundTasks
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
 import cv2, serial
 import asyncio, json, time, os
-from camera2 import takePicture
+# from camera2 import takePicture
+from camera3 import IdsCamera
+from threading import Thread, Lock
 
 
 folder_path = './output'
@@ -48,12 +50,13 @@ def communicate_with_serial(command, response_count=1):
     except Exception as e:
         return JSONResponse(content=f"An error occurred: {e}", status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
-app = FastAPI()
-            
 def makeFileName():
     timestr = time.strftime("%Y%m%d-%H_%M_%S")
     return f"./output/{timestr}.jpeg"
+
+
+app = FastAPI()
+            
 
 @app.get("/status")
 async def get_status():
@@ -86,12 +89,65 @@ async def set_maximum_auto():
 
 @app.get("/get_image")
 async def get_image(background_tasks: BackgroundTasks):
-    image_path = takePicture()
+    # image_path = takePicture()
 
     # 이미지 캡처가 완료된 후 응답 생성
-    response = FileResponse(image_path)
+    # response = FileResponse(image_path)
 
     # 파일 삭제를 백그라운드 태스크로 등록
-    background_tasks.add_task(delete_file, image_path)
+    # background_tasks.add_task(delete_file, image_path)
 
-    return response
+    # return response
+    return None
+
+def capture_frames():
+    global output_frame, lock
+    camera = IdsCamera()
+    while True:
+        try:
+            img = next(camera.streaming_image())
+            img_bgr = cv2.cvtColor(img, cv2.COLOR_RGBA2BGR)
+            img_bgr = cv2.resize(img_bgr, (640, 480))
+
+            _, buffer = cv2.imencode('.jpg', img_bgr)
+            data = buffer.tobytes()
+
+            with lock:
+                output_frame = data
+
+        except StopIteration:
+            print("카메라 스트림 종료")
+            break
+        except Exception as e:
+            print(f"프레임 생성 중 오류 발생: {str(e)}")
+            continue
+
+lock = Lock()
+output_frame = None
+
+thread = Thread(target=capture_frames)
+thread.daemon = True
+thread.start()
+
+
+
+
+
+
+def generate_frames():
+    global output_frame, lock
+    
+    while True:
+        with lock:
+            if output_frame is None:
+                continue
+            frame = output_frame
+       # MJPEG 스트림으로 프레임 전송
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+            
+@app.get("/video_feed")
+async def video_feed():
+    return StreamingResponse(generate_frames(), media_type='multipart/x-mixed-replace; boundary=frame')
+
+    return FileResponse("./output/20241026-15_59_59.jpeg")
