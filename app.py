@@ -38,13 +38,14 @@ def receive_multiple_responses(ser, response_count=1):
 
 async def communicate_with_serial(command, response_count=1):
     try:
-        async def serial_operation():
+        def serial_operation():
             ser = serial.Serial("/dev/ttyAMA0", 115200, timeout=1)
             send_json_data(ser, command)
             return receive_multiple_responses(ser, response_count)
             
         # serial 통신을 비동기 이벤트 루프에서 실행
-        return await asyncio.to_thread(serial_operation)
+        result = await asyncio.to_thread(serial_operation)
+        return result
         
     except serial.SerialException as e:
         return JSONResponse(content=f"Serial communication error: {e}", 
