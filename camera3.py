@@ -1,5 +1,5 @@
-import sys
-
+import sys, os
+os.environ['GENICAM_GENTL64_PATH'] = '/usr/lib/ids/cti'
 from ids_peak import ids_peak
 from ids_peak_ipl import ids_peak_ipl
 from ids_peak import ids_peak_ipl_extension
@@ -14,14 +14,19 @@ class IdsCamera:
         self.__datastream = None
         self.__acquisition_running = False
         self.__image_converter = ids_peak_ipl.ImageConverter()
-
-        ids_peak.Library.Initialize()
+        self.__initialized = False
+        try:
+            ids_peak.Library.Initialize()
+        except Exception as e:
+            print("Exception", str(e))
 
         if self.__open_device():
             try:
                 # Create a display for the camera image
                 if not self.__start_acquisition():
-                    print("Error", "Unable to start acquisition!")
+                    raise Exception("Unable to start acquisition!")
+                self.__initialized = True
+                print("카메라 초기화 완료")
             except Exception as e:
                 print("Exception", str(e))
 
@@ -35,6 +40,7 @@ class IdsCamera:
             
             # Return if no device was found
             if device_manager.Devices().empty():
+                raise Exception("No device found!")
                 print("Error", "No device found!")
                 return False
 
@@ -43,18 +49,18 @@ class IdsCamera:
                 if device.IsOpenable():
                     self.__device = device.OpenDevice(ids_peak.DeviceAccessType_Control)
                     break
+            else:
+                raise Exception("No device could be opened!")
             # Return if no device could be opened
             if self.__device is None:
-                print("Error", "Device could not be opened!")
-                return False
+                raise Exception("No device could be opened!")
 
             # Open standard data stream
             datastreams = self.__device.DataStreams()
             
             if datastreams.empty():
-                print("Error", "Device has no DataStream!")
-                self.__device = None
-                return False
+                raise Exception("Device has no DataStream!")
+
 
             self.__datastream = datastreams[0].OpenDataStream()
             
@@ -87,9 +93,8 @@ class IdsCamera:
             
             return True
         except ids_peak.Exception as e:
-            print("Exception", str(e))
+            raise Exception(str(e))
 
-        return False
 
     def __close_device(self):
         """
@@ -114,7 +119,7 @@ class IdsCamera:
         """
         # Check that a device is opened and that the acquisition is NOT running. If not, return.
         if self.__device is None:
-            return False
+            raise Exception("No device is opened!")
         if self.__acquisition_running is True:
             return True
 
@@ -128,7 +133,7 @@ class IdsCamera:
             # AcquisitionFrameRate is not available. Unable to limit fps. Print warning and continue on.
             print("Warning", "Unable to limit fps, since the AcquisitionFrameRate Node is"
                                 " not supported by the connected camera. Program will continue without limit.")
-
+        self.setCameraParams(False)
         try:
             # Lock critical features to prevent them from changing during acquisition
             self.__nodemap_remote_device.FindNode("TLParamsLocked").SetValue(1)
@@ -192,6 +197,9 @@ class IdsCamera:
             print("Exception", str(e))
             
     def streaming_image(self):
+        if not self.__initialized:
+            raise Exception("카메라가 초기화되지 않았습니다")
+        
         try:
             # Get buffer from device's datastream
             buffer = self.__datastream.WaitForFinishedBuffer(5000)
@@ -208,6 +216,20 @@ class IdsCamera:
             
         except ids_peak.Exception as e:
             print("Exception: " + str(e))
+
+
+    def setCameraParams(self, autoExposure=True): 
+        try:
+            node_map_remote_device = self.__device.RemoteDevice().NodeMaps()[0]
+            # Get the NodeMap of the RemoteDevice
+            if autoExposure:
+                node_map_remote_device.FindNode("ExposureAuto").SetCurrentEntry("Continuous")
+            else:              
+                node_map_remote_device.FindNode("ExposureAuto").SetCurrentEntry("Off")
+                node_map_remote_device.FindNode("ExposureTime").SetValue(14996.9 )
+        
+        except Exception as e:
+            print(e)
 
     def __del__(self):
         self.__destroy_all()

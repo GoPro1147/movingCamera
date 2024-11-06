@@ -1,10 +1,11 @@
 from fastapi import FastAPI,  status,  BackgroundTasks
 from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
-import cv2, serial
+import cv2, serial, numpy as np
 import asyncio, json, time, os
 # from camera2 import takePicture
 from camera3 import IdsCamera
 from threading import Thread, Lock
+from concurrent.futures import ThreadPoolExecutor
 
 
 folder_path = './output'
@@ -36,20 +37,19 @@ def receive_multiple_responses(ser, response_count=1):
         return None
     return responses
 
-async def communicate_with_serial(command, response_count=1):
+def communicate_with_serial(command, response_count=1):
     try:
-        # serial 통신을 비동기 이벤트 루프에서 실행
-        return await asyncio.to_thread(
-            lambda: serial.Serial("/dev/ttyAMA0", 115200, timeout=1),
-            lambda ser: send_json_data(ser, command),
-            lambda ser: receive_multiple_responses(ser, response_count)
-        )
+        with serial.Serial("/dev/ttyAMA0", 115200, timeout=1) as ser:
+            send_json_data(ser, command)
+            responses = receive_multiple_responses(ser, response_count)
+        if responses:
+            return JSONResponse(content=responses, status_code=status.HTTP_200_OK)
+        else:
+            return JSONResponse(content="No response from UART device", status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
     except serial.SerialException as e:
-        return JSONResponse(content=f"Serial communication error: {e}", 
-                          status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return JSONResponse(content=f"Serial communication error: {e}", status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
     except Exception as e:
-        return JSONResponse(content=f"An error occurred: {e}", 
-                          status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return JSONResponse(content=f"An error occurred: {e}", status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 def makeFileName():
     timestr = time.strftime("%Y%m%d-%H_%M_%S")
@@ -61,35 +61,54 @@ app = FastAPI()
 
 @app.get("/status")
 async def get_status():
-    return await communicate_with_serial({"cmd": "status"})
+    return communicate_with_serial({"cmd": "status"})
 
 @app.get("/location")
 async def get_camera_location():
-    return await communicate_with_serial({"cmd": "get_x"})
+    return communicate_with_serial({"cmd": "get_x"})
 
 @app.get("/stop")
 async def stop_moving_camera():
-    return await communicate_with_serial({"cmd": "halt"})
+    return communicate_with_serial({"cmd": "halt"})
 
 @app.get("/go/{x}")
 async def go_moving_camera(x: str):
-    return await communicate_with_serial({"cmd": "go_x", "x": x}, 2)
+    return communicate_with_serial({"cmd": "go_x", "x": x}, 2)
 
 @app.get("/calibrate")
 async def calibrate():
-    return await communicate_with_serial({"cmd": "calibrate"})
+    return communicate_with_serial({"cmd": "calibrate"})
 
 @app.get("/setmaximum/manual/{x_max}")
 async def set_maximum_manual(x_max: str):
-    return await communicate_with_serial({"cmd": "calibrate", "set_type": "manual", "x_max": x_max})
+    return communicate_with_serial({"cmd": "calibrate", "set_type": "manual", "x_max": x_max})
 
 @app.get("/setmaximum/auto")
 async def set_maximum_auto():
-    return await communicate_with_serial({"cmd": "calibrate", "set_type": "limit_sw"})
+    return communicate_with_serial({"cmd": "calibrate", "set_type": "limit_sw"})
 
 
 @app.get("/get_image")
 async def get_image(background_tasks: BackgroundTasks):
+    global output_frame, lock
+
+    with lock:
+        if output_frame is None:
+            return JSONResponse(content="No frame available", status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        frame = output_frame
+
+    # 파일로 저장
+    image_path = makeFileName()
+    with open(image_path, 'wb') as f:
+        f.write(frame)
+
+    # 파일 응답 생성
+    response = FileResponse(image_path)
+
+    # 파일 삭제를 백그라운드 태스크로 등록
+    background_tasks.add_task(delete_file, image_path)
+
+    return response
     # image_path = takePicture()
 
     # 이미지 캡처가 완료된 후 응답 생성
@@ -104,11 +123,12 @@ async def get_image(background_tasks: BackgroundTasks):
 def capture_frames():
     global output_frame, lock
     camera = IdsCamera()
+
     while True:
         try:
             img = next(camera.streaming_image())
             img_bgr = cv2.cvtColor(img, cv2.COLOR_RGBA2BGR)
-            img_bgr = cv2.resize(img_bgr, (640, 480))
+            # img_bgr = cv2.resize(img_bgr, (640, 480))
 
             _, buffer = cv2.imencode('.jpg', img_bgr)
             data = buffer.tobytes()
@@ -132,7 +152,7 @@ thread.start()
 
 def generate_frames():
     global output_frame, lock
-    
+
     while True:
         with lock:
             if output_frame is None:
