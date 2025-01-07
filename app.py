@@ -113,18 +113,13 @@ async def get_image(background_tasks: BackgroundTasks):
 
     return response
 
+camera = IdsCamera()
 
 def capture_frames():
     global output_frame, lock
-    camera = None
     
     while True:
         try:
-            # 카메라가 없으면 초기화
-            if camera is None:
-                camera = IdsCamera()
-                print("카메라 초기화 완료")
-
             img = next(camera.streaming_image())
             img_bgr = cv2.cvtColor(img, cv2.COLOR_RGBA2BGR)
             # img_bgr = cv2.resize(img_bgr, (640, 480))
