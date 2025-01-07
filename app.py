@@ -112,23 +112,19 @@ async def get_image(background_tasks: BackgroundTasks):
     background_tasks.add_task(delete_file, image_path)
 
     return response
-    # image_path = takePicture()
 
-    # 이미지 캡처가 완료된 후 응답 생성
-    # response = FileResponse(image_path)
-
-    # 파일 삭제를 백그라운드 태스크로 등록
-    # background_tasks.add_task(delete_file, image_path)
-
-    # return response
-    return None
 
 def capture_frames():
     global output_frame, lock
-    camera = IdsCamera()
-
+    camera = None
+    
     while True:
         try:
+            # 카메라가 없으면 초기화
+            if camera is None:
+                camera = IdsCamera()
+                print("카메라 초기화 완료")
+
             img = next(camera.streaming_image())
             img_bgr = cv2.cvtColor(img, cv2.COLOR_RGBA2BGR)
             # img_bgr = cv2.resize(img_bgr, (640, 480))
@@ -139,11 +135,20 @@ def capture_frames():
             with lock:
                 output_frame = data
 
+            # 메모리 해제
+            del img
+            del img_bgr
+            del buffer
+            
         except StopIteration:
-            print("카메라 스트림 종료")
-            break
+            print("카메라 스트림 종료 - 재연결 시도")
+            camera = None  # 카메라 객체 초기화
+            time.sleep(1)  # 재연결 전 잠시 대기
+            continue
         except Exception as e:
             print(f"프레임 생성 중 오류 발생: {str(e)}")
+            camera = None  # 에러 발생 시 카메라 객체 초기화
+            time.sleep(1)
             continue
 
 lock = Lock()
@@ -155,16 +160,23 @@ thread.start()
 
 def generate_frames():
     global output_frame, lock
-
+    
     while True:
-        with lock:
-            if output_frame is None:
-                continue
-            frame = output_frame
-       # MJPEG 스트림으로 프레임 전송
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+        try:
+            with lock:
+                if output_frame is None:
+                    time.sleep(0.1)  # CPU 사용량 감소
+                    continue
+                frame = output_frame.copy()  # 데이터 복사
             
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+                   
+        except Exception as e:
+            print(f"프레임 전송 중 오류 발생: {str(e)}")
+            time.sleep(0.1)
+            continue
+
 @app.get("/video_feed")
 async def video_feed():
     return StreamingResponse(generate_frames(), media_type='multipart/x-mixed-replace; boundary=frame')
