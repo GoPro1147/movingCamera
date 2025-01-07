@@ -1,7 +1,7 @@
 from fastapi import FastAPI,  status,  BackgroundTasks
 from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
 import cv2, serial, numpy as np
-import asyncio, json, time, os
+import asyncio, json, time, os, sys
 # from camera2 import takePicture
 from camera3 import IdsCamera
 from threading import Thread, Lock
@@ -113,10 +113,25 @@ async def get_image(background_tasks: BackgroundTasks):
 
     return response
 
-camera = IdsCamera()
+# 전역 변수로 카메라 객체 선언
+camera = None
+
+def initialize_camera():
+    global camera
+    try:
+        camera = IdsCamera()
+        return True
+    except Exception as e:
+        print(f"카메라 초기화 실패: {str(e)}")
+        return False
+
+# 프로그램 시작시 카메라 초기화
+if not initialize_camera():
+    print("프로그램을 종료합니다.")
+    sys.exit(1)
 
 def capture_frames():
-    global output_frame, lock
+    global output_frame, lock, camera
     
     while True:
         try:
